@@ -10,28 +10,23 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import io
 
-# --- Initialize the Flask App ---
 app = Flask(__name__)
 CORS(app)
 
-# --- AI Model & Data Loading (Done once at startup) ---
+# --- AI Model & Data Loading ---
 print("Loading model and data... This may take a moment.")
 
-# Setup paths
 SERVER_DIR = Path(__file__).resolve().parent
 PRODUCTS_FILE = SERVER_DIR / "data" / "products.json"
 FEATURES_FILE = SERVER_DIR / "data" / "features.json"
 
-# Load product data and features
 with open(PRODUCTS_FILE, 'r') as f:
     product_data = json.load(f)
 with open(FEATURES_FILE, 'r') as f:
     product_features = json.load(f)
 
-# Create a mapping from product ID to product info for quick lookups
 product_id_map = {item['id']: item for item in product_data}
 
-# Prepare feature vectors for fast similarity search
 product_ids = list(product_features.keys())
 feature_vectors = np.array([product_features[pid] for pid in product_ids])
 
@@ -50,7 +45,6 @@ preprocess = transforms.Compose([
 print("Model and data loaded successfully!")
 
 
-# --- Helper Function ---
 def extract_features_from_image(image_bytes):
     """Extracts a feature vector from an image in byte format."""
     try:
@@ -86,13 +80,12 @@ def find_similar():
         return jsonify({"error": "Could not process the uploaded image"}), 500
     
     # 2. Calculate Cosine Similarity
-    # Reshape query_features to be a 2D array for the function
     similarities = cosine_similarity(query_features.reshape(1, -1), feature_vectors)
     
     # 3. Get top 10 most similar products
     # `similarities[0]` contains the scores. `argsort` finds the indices that would sort the array.
     # `[::-1]` reverses it to get descending order.
-    top_indices = np.argsort(similarities[0])[::-1][:10]
+    top_indices = np.argsort(similarities[0])[::-1][:15]
 
     # 4. Format the results
     results = []
