@@ -7,7 +7,16 @@ body {
 }
 
 .App {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   text-align: center;
+}
+
+.error-message {
+  color: #fa383e;
+  background-color: #ffebe6;
+  border: 1px solid #fa383e;
+  padding: 1rem;
+  border-radius: 8px;
 }

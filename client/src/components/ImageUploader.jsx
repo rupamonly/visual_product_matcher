@@ -2,20 +2,20 @@ import React, { useState } from 'react';
 import './ImageUploader.css';
 
 function ImageUploader({ onSearch }) {
-  // State to hold the selected file
+  
   const [selectedFile, setSelectedFile] = useState(null);
 
-  // Handler for when a file is selected
+  
   const handleFileChange = (event) => {
     setSelectedFile(event.target.files[0]);
   };
 
-  // Handler for the form submission
+  
   const handleSubmit = (event) => {
-    event.preventDefault(); // Prevent the form from reloading the page
+    event.preventDefault();
     if (selectedFile) {
       console.log('Submitting file:', selectedFile);
-      onSearch(selectedFile); // Pass the file to the parent component (App.jsx)
+      onSearch(selectedFile);
     } else {
       alert('Please select an image file first.');
     }
