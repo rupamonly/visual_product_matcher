@@ -32,7 +32,7 @@
 
 ---
 
-## 🧠 AI Model & Method
+## 🧠 Model & Method
 
 The core of this application is its visual search capability, which is achieved through a feature extraction and comparison pipeline.
 
