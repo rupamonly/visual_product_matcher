@@ -14,7 +14,7 @@ INPUT_FILE = SERVER_DIR / "data" / "products.json"
 OUTPUT_FILE = SERVER_DIR / "data" / "features.json"
 
 # --- Model Setup ---
-model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
+model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 model.eval()
 
 feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])

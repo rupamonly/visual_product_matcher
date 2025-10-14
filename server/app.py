@@ -31,7 +31,7 @@ product_ids = list(product_features.keys())
 feature_vectors = np.array([product_features[pid] for pid in product_ids])
 
 # Load pre-trained ResNet-50 model
-model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
+model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 model.eval()
 feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
 
