@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-import io
 import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
@@ -9,109 +8,86 @@ from flask_cors import CORS
 from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-import requests
-from tqdm import tqdm
-import time
+import io
 
-# --- Initialize the Flask App ---
 app = Flask(__name__)
 CORS(app)
 
-# --- Path and Model Configuration ---
+# --- AI Model & Data Loading ---
+print("Loading model and data... This may take a moment.")
+
 SERVER_DIR = Path(__file__).resolve().parent
 PRODUCTS_FILE = SERVER_DIR / "data" / "products.json"
 FEATURES_FILE = SERVER_DIR / "data" / "features.json"
 
-# --- AI Model Setup ---
-# Using the lightweight and fast MobileNetV2
-model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
-model.eval()
-feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
-
-preprocess = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-# --- Helper Function for Feature Extraction from URL ---
-def extract_features_from_url(image_url):
-    try:
-        response = requests.get(image_url, stream=True, timeout=15)
-        response.raise_for_status()
-        image = Image.open(response.raw).convert("RGB")
-        input_tensor = preprocess(image)
-        input_batch = input_tensor.unsqueeze(0)
-        with torch.no_grad():
-            features = feature_extractor(input_batch)
-        return features.flatten().tolist()
-    except Exception as e:
-        print(f"  - Could not process image {image_url}. Error: {e}")
-        return None
-
-# --- Generate Features File if it Doesn't Exist ---
-if not FEATURES_FILE.exists():
-    print(f"{FEATURES_FILE} not found. Generating features on server startup...")
-    with open(PRODUCTS_FILE, 'r') as f:
-        products = json.load(f)
-
-    product_features = {}
-    for product in tqdm(products, desc="Generating Features"):
-        product_id = product.get("id")
-        image_url = product.get("image_url")
-        if product_id and image_url:
-            features = extract_features_from_url(image_url)
-            if features:
-                product_features[product_id] = features
-            time.sleep(0.1)
-
-    with open(FEATURES_FILE, 'w') as f:
-        json.dump(product_features, f)
-    print("Features file generated successfully.")
-
-# --- Load Data for the App ---
-print("Loading data for the app...")
 with open(PRODUCTS_FILE, 'r') as f:
     product_data = json.load(f)
 with open(FEATURES_FILE, 'r') as f:
     product_features = json.load(f)
 
 product_id_map = {item['id']: item for item in product_data}
+
 product_ids = list(product_features.keys())
 feature_vectors = np.array([product_features[pid] for pid in product_ids])
-print("Data loaded successfully!")
+
+# Load pre-trained ResNet-50 model
+model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
+model.eval()
+feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
+
+# Define image transformations
+preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+print("Model and data loaded successfully!")
 
 
-# --- API Endpoints ---
-def extract_features_from_image_bytes(image_bytes):
+def extract_features_from_image(image_bytes):
+    """Extracts a feature vector from an image in byte format."""
     try:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         input_tensor = preprocess(image)
         input_batch = input_tensor.unsqueeze(0)
+
         with torch.no_grad():
             features = feature_extractor(input_batch)
+        
         return features.flatten().numpy()
     except Exception as e:
-        print(f"Error processing uploaded image: {e}")
+        print(f"Error processing image: {e}")
         return None
 
+# --- API Endpoints ---
 @app.route('/')
 def index():
     return "Hello, the Visual Matcher API is running!"
 
 @app.route('/api/find-similar', methods=['POST'])
 def find_similar():
-    # This function remains the same
+    """Receives an image, finds similar products, and returns them."""
     if 'image' not in request.files:
         return jsonify({"error": "No image file provided"}), 400
+
     image_file = request.files['image']
     image_bytes = image_file.read()
-    query_features = extract_features_from_image_bytes(image_bytes)
+
+    # 1. Extract features from the user's uploaded image
+    query_features = extract_features_from_image(image_bytes)
     if query_features is None:
         return jsonify({"error": "Could not process the uploaded image"}), 500
+    
+    # 2. Calculate Cosine Similarity
     similarities = cosine_similarity(query_features.reshape(1, -1), feature_vectors)
-    top_indices = np.argsort(similarities[0])[::-1][:10]
+    
+    # 3. Get top 10 most similar products
+    # `similarities[0]` contains the scores. `argsort` finds the indices that would sort the array.
+    # `[::-1]` reverses it to get descending order.
+    top_indices = np.argsort(similarities[0])[::-1][:15]
+
+    # 4. Format the results
     results = []
     for i in top_indices:
         product_id = product_ids[i]
@@ -122,136 +98,15 @@ def find_similar():
                 "name": product_info["name"],
                 "category": product_info["category"],
                 "image_url": product_info["image_url"],
-                "product_url": product_info.get("product_url"),
                 "similarity_score": float(similarities[0][i])
             }
             results.append(result_item)
+            
     return jsonify(results)
 
+# --- Run the App ---
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-# import json
-# from pathlib import Path
-# import torch
-# import torchvision.models as models
-# import torchvision.transforms as transforms
-# from flask import Flask, request, jsonify
-# from flask_cors import CORS
-# from PIL import Image
-# from sklearn.metrics.pairwise import cosine_similarity
-# import numpy as np
-# import io
-
-# app = Flask(__name__)
-# CORS(app)
-
-# # --- AI Model & Data Loading ---
-# print("Loading model and data... This may take a moment.")
-
-# SERVER_DIR = Path(__file__).resolve().parent
-# PRODUCTS_FILE = SERVER_DIR / "data" / "products.json"
-# FEATURES_FILE = SERVER_DIR / "data" / "features.json"
-
-# with open(PRODUCTS_FILE, 'r') as f:
-#     product_data = json.load(f)
-# with open(FEATURES_FILE, 'r') as f:
-#     product_features = json.load(f)
-
-# product_id_map = {item['id']: item for item in product_data}
-
-# product_ids = list(product_features.keys())
-# feature_vectors = np.array([product_features[pid] for pid in product_ids])
-
-# # Load pre-trained ResNet-50 model
-# model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
-# model.eval()
-# feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
-
-# # Define image transformations
-# preprocess = transforms.Compose([
-#     transforms.Resize(256),
-#     transforms.CenterCrop(224),
-#     transforms.ToTensor(),
-#     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-# ])
-# print("Model and data loaded successfully!")
-
-
-# def extract_features_from_image(image_bytes):
-#     """Extracts a feature vector from an image in byte format."""
-#     try:
-#         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-#         input_tensor = preprocess(image)
-#         input_batch = input_tensor.unsqueeze(0)
-
-#         with torch.no_grad():
-#             features = feature_extractor(input_batch)
-        
-#         return features.flatten().numpy()
-#     except Exception as e:
-#         print(f"Error processing image: {e}")
-#         return None
-
-# # --- API Endpoints ---
-# @app.route('/')
-# def index():
-#     return "Hello, the Visual Matcher API is running!"
-
-# @app.route('/api/find-similar', methods=['POST'])
-# def find_similar():
-#     """Receives an image, finds similar products, and returns them."""
-#     if 'image' not in request.files:
-#         return jsonify({"error": "No image file provided"}), 400
-
-#     image_file = request.files['image']
-#     image_bytes = image_file.read()
-
-#     # 1. Extract features from the user's uploaded image
-#     query_features = extract_features_from_image(image_bytes)
-#     if query_features is None:
-#         return jsonify({"error": "Could not process the uploaded image"}), 500
-    
-#     # 2. Calculate Cosine Similarity
-#     similarities = cosine_similarity(query_features.reshape(1, -1), feature_vectors)
-    
-#     # 3. Get top 10 most similar products
-#     # `similarities[0]` contains the scores. `argsort` finds the indices that would sort the array.
-#     # `[::-1]` reverses it to get descending order.
-#     top_indices = np.argsort(similarities[0])[::-1][:15]
-
-#     # 4. Format the results
-#     results = []
-#     for i in top_indices:
-#         product_id = product_ids[i]
-#         product_info = product_id_map.get(product_id)
-#         if product_info:
-#             result_item = {
-#                 "id": product_info["id"],
-#                 "name": product_info["name"],
-#                 "category": product_info["category"],
-#                 "image_url": product_info["image_url"],
-#                 "similarity_score": float(similarities[0][i])
-#             }
-#             results.append(result_item)
-            
-#     return jsonify(results)
-
-# # --- Run the App ---
-# if __name__ == '__main__':
-#     app.run(debug=True)
 
 
 
